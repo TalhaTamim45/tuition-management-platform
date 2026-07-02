@@ -1,33 +1,21 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from flask import Flask, jsonify
+from flask_cors import CORS
 
-app = FastAPI(
-    title="Tuition Management Platform API",
-    description="Backend API services connecting tutors and guardians in Bangladesh.",
-    version="1.0.0"
-)
+app = Flask(__name__)
+CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}})
 
-# Enable CORS for frontend integration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-@app.get("/")
+@app.route("/")
 def read_root():
-    return {
+    return jsonify({
         "status": "online",
-        "message": "Welcome to the Tuition Management Platform API (Group-S5-13)",
-        "docs_url": "/docs"
-    }
+        "message": "Welcome to the Tuition Management Platform API (Flask Setup)"
+    })
 
-@app.get("/api/health")
+@app.route("/api/health", methods=["GET"])
 def health_check():
-    return {
-        "status": "healthy",
-        "database": "disconnected_base_setup",
-        "version": "1.0.0"
-    }
+    return jsonify({
+        "status": "Backend is running"
+    })
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)
