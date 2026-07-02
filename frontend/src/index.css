@@ -26,6 +26,7 @@ body {
   margin: 0 auto;
   padding: 2rem;
   text-align: center;
+  width: 100%;
 }
 
 .app-container {
@@ -33,6 +34,38 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 2rem;
+  width: 100%;
+}
+
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 1rem 0;
+  border-bottom: 1px solid #333;
+}
+
+.nav-logo {
+  font-weight: bold;
+  font-size: 1.2rem;
+  color: #646cff;
+}
+
+.nav-links {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.nav-links a {
+  color: #aaa;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.nav-links a:hover {
+  color: #646cff;
 }
 
 .hero-section {
@@ -131,5 +164,8 @@ body {
   }
   .btn-secondary {
     background-color: #eaeaea;
+  }
+  .navbar {
+    border-bottom-color: #ddd;
   }
 }
