@@ -38,7 +38,7 @@ function App() {
       </main>
 
       <footer className="footer">
-        <p>&copy; 2026 Tuition Management Platform (Group-S5-13). All rights reserved.</p>
+        <p>&copy; 2026 Tuition Management Platform. All rights reserved to Talha</p>
       </footer>
     </div>
   )
