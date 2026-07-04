@@ -1,3 +1,4 @@
+# Base Setup validated for CSE309 assessment
 from flask import Flask, jsonify
 from flask_cors import CORS
 
