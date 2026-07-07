@@ -1,4 +1,6 @@
-﻿# Tuition Management Platform
+# Tuition Management Platform
+
+Developed by: **Talha Tamim** (@TalhaTamim45)
 
 A web application developed for the **CSE309 (Web Applications and Internet Technologies)** course project. This platform connects tutors with students and guardians in Bangladesh, establishing a structured, secure, and transparent ecosystem for tutoring.
 
