@@ -4,13 +4,17 @@ from auth import generate_token, generate_password_hash, check_password_hash, to
 
 auth_bp = Blueprint('auth', __name__)
 
-@auth_bp.route('/api/auth/register', methods=['POST'])
+@auth_bp.route('/api/auth/register', methods=['POST', 'OPTIONS'])
 def register():
+    if request.method == 'OPTIONS':
+        return jsonify({"success": True}), 200
+
     data = request.get_json() or {}
     name = data.get('name', '').strip()
     email = data.get('email', '').strip().lower()
     password = data.get('password', '').strip()
-    role = data.get('role', 'Guardian').strip().capitalize()
+    phone = data.get('phone', '').strip()
+    raw_role = str(data.get('role', 'client')).strip().lower()
 
     if not name or not email or not password:
         return jsonify({
@@ -18,10 +22,11 @@ def register():
             "error": "Name, email, and password are required."
         }), 400
 
-    if role not in ['Guardian', 'Student', 'Tutor', 'Admin']:
+    # Public registration choices MUST be strictly 'client' or 'tutor'
+    if raw_role not in ['client', 'tutor']:
         return jsonify({
             "success": False,
-            "error": "Invalid role. Allowed roles: Guardian, Student, Tutor, Admin."
+            "error": "Invalid account role"
         }), 400
 
     existing_user = User.query.filter_by(email=email).first()
@@ -35,8 +40,10 @@ def register():
     new_user = User(
         name=name,
         email=email,
+        phone=phone,
         password_hash=hashed_pw,
-        role=role
+        role=raw_role,
+        is_blocked=False
     )
     db.session.add(new_user)
     db.session.commit()
@@ -49,8 +56,12 @@ def register():
         "user": new_user.to_dict()
     }), 201
 
-@auth_bp.route('/api/auth/login', methods=['POST'])
+
+@auth_bp.route('/api/auth/login', methods=['POST', 'OPTIONS'])
 def login():
+    if request.method == 'OPTIONS':
+        return jsonify({"success": True}), 200
+
     data = request.get_json() or {}
     email = data.get('email', '').strip().lower()
     password = data.get('password', '').strip()
@@ -68,6 +79,12 @@ def login():
             "error": "Invalid email or password."
         }), 401
 
+    if getattr(user, 'is_blocked', False):
+        return jsonify({
+            "success": False,
+            "error": "Account is blocked. Please contact support."
+        }), 403
+
     token = generate_token(user.id)
     return jsonify({
         "success": True,
@@ -76,7 +93,8 @@ def login():
         "user": user.to_dict()
     }), 200
 
-@auth_bp.route('/api/auth/me', methods=['GET'])
+
+@auth_bp.route('/api/auth/me', methods=['GET', 'OPTIONS'])
 @token_required
 def get_current_user():
     return jsonify({
