@@ -16,7 +16,13 @@ def create_app(db_uri=None):
     app.config['SECRET_KEY'] = "tuition_platform_secret_key_cse309_assessment4"
 
     # CORS configuration allowing cross-origin requests from Vite frontend
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    CORS(app, resources={
+        r"/api/*": {
+            "origins": "*",
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"]
+        }
+    })
 
     # Initialize extensions
     db.init_app(app)

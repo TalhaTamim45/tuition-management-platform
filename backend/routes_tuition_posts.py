@@ -4,9 +4,12 @@ from auth import token_required
 
 tuition_posts_bp = Blueprint('tuition_posts', __name__)
 
-@tuition_posts_bp.route('/api/tuition-posts', methods=['POST'])
+@tuition_posts_bp.route('/api/tuition-posts', methods=['POST', 'OPTIONS'])
 @token_required
 def create_tuition_post():
+    if request.method == 'OPTIONS':
+        return jsonify({"success": True}), 200
+
     """
     POST /api/tuition-posts
     Create a new tuition post.
@@ -118,9 +121,11 @@ def create_tuition_post():
     }), 201
 
 
-@tuition_posts_bp.route('/api/tuition-posts/my-posts', methods=['GET'])
+@tuition_posts_bp.route('/api/tuition-posts/my-posts', methods=['GET', 'OPTIONS'])
 @token_required
 def get_my_tuition_posts():
+    if request.method == 'OPTIONS':
+        return jsonify({"success": True}), 200
     """
     GET /api/tuition-posts/my-posts
     Retrieve all tuition posts created by the logged-in user.

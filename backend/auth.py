@@ -3,7 +3,7 @@ import datetime
 from functools import wraps
 from flask import request, jsonify, g
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import User
+from models import db, User
 
 SECRET_KEY = "tuition_platform_secret_key_cse309_assessment4"
 
@@ -19,6 +19,9 @@ def token_required(f):
     """Decorator to enforce authentication on protected endpoints."""
     @wraps(f)
     def decorated(*args, **kwargs):
+        if request.method == 'OPTIONS':
+            return jsonify({"success": True}), 200
+            
         token = None
         auth_header = request.headers.get('Authorization')
 
