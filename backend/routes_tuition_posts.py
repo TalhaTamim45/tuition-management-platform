@@ -7,21 +7,21 @@ tuition_posts_bp = Blueprint('tuition_posts', __name__)
 @tuition_posts_bp.route('/api/tuition-posts', methods=['POST', 'OPTIONS'])
 @token_required
 def create_tuition_post():
-    if request.method == 'OPTIONS':
-        return jsonify({"success": True}), 200
-
     """
     POST /api/tuition-posts
     Create a new tuition post.
-    Access restricted to logged-in Guardians or Students.
+    Access strictly restricted to logged-in users with 'client' role.
     """
+    if request.method == 'OPTIONS':
+        return jsonify({"success": True}), 200
+
     current_user = g.current_user
 
-    # Authorization Check: Only Guardians and Students can post tuition jobs
-    if current_user.role not in ['Guardian', 'Student']:
+    # Authorization Check: ONLY Client role can create tuition job posts
+    if current_user.role.lower() != 'client':
         return jsonify({
             "success": False,
-            "error": f"Role '{current_user.role}' is not authorized to create tuition posts. Only Guardians or Students can post."
+            "error": "Only clients can create tuition posts"
         }), 403
 
     data = request.get_json() or {}
@@ -124,15 +124,16 @@ def create_tuition_post():
 @tuition_posts_bp.route('/api/tuition-posts/my-posts', methods=['GET', 'OPTIONS'])
 @token_required
 def get_my_tuition_posts():
-    if request.method == 'OPTIONS':
-        return jsonify({"success": True}), 200
     """
     GET /api/tuition-posts/my-posts
-    Retrieve all tuition posts created by the logged-in user.
+    Retrieve all tuition posts created by the logged-in client.
     """
+    if request.method == 'OPTIONS':
+        return jsonify({"success": True}), 200
+
     current_user = g.current_user
     posts = TuitionPost.query.filter_by(user_id=current_user.id).order_by(TuitionPost.created_at.desc()).all()
-    
+
     return jsonify({
         "success": True,
         "count": len(posts),
@@ -140,12 +141,15 @@ def get_my_tuition_posts():
     }), 200
 
 
-@tuition_posts_bp.route('/api/tuition-posts', methods=['GET'])
+@tuition_posts_bp.route('/api/tuition-posts', methods=['GET', 'OPTIONS'])
 def get_all_tuition_posts():
     """
     GET /api/tuition-posts
-    Public endpoint: Get all tuition posts available.
+    Public endpoint: Get all open tuition posts available.
     """
+    if request.method == 'OPTIONS':
+        return jsonify({"success": True}), 200
+
     posts = TuitionPost.query.order_by(TuitionPost.created_at.desc()).all()
     return jsonify({
         "success": True,

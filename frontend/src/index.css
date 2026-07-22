@@ -127,6 +127,10 @@ body {
   color: var(--primary);
 }
 
+.role-client { color: #4f46e5; }
+.role-tutor { color: #059669; }
+.role-admin { color: #dc2626; }
+
 /* Cards & Layout */
 .card {
   background: var(--card-bg);
@@ -152,8 +156,10 @@ body {
 .mt-2 { margin-top: 0.5rem; }
 .mt-3 { margin-top: 1rem; }
 .mt-4 { margin-top: 1.5rem; }
+.mb-4 { margin-bottom: 1.5rem; }
 .p-4 { padding: 1.5rem; }
 .p-5 { padding: 2.5rem; }
+.font-sm { font-size: 0.825rem; }
 
 /* Hero Section */
 .hero-section {
@@ -254,7 +260,31 @@ body {
   background-color: #fff;
 }
 
-/* Validation Field Error Messages (Rendered Underneath Related Inputs) */
+.role-options-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.4rem;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  background: var(--background);
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.radio-label input {
+  margin: 0;
+}
+
+/* Validation Field Error Messages */
 .input-error {
   border-color: var(--danger) !important;
   background-color: #fff5f5 !important;
@@ -340,6 +370,11 @@ body {
   background: var(--danger-bg);
 }
 
+.btn-success {
+  background: var(--success);
+  color: white;
+}
+
 .btn-lg {
   padding: 0.85rem 1.75rem;
   font-size: 1.05rem;
@@ -405,100 +440,134 @@ body {
   to { transform: rotate(360deg); }
 }
 
-/* Posts Display Grid & Cards */
-.posts-grid {
+/* Admin Metrics Grid */
+.admin-metrics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
 }
 
-.post-card {
+.metric-card {
+  background: white;
+  padding: 1.5rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.metric-icon {
+  font-size: 2.2rem;
+}
+
+.metric-data {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  border-left: 5px solid var(--primary);
 }
 
-.post-card-header {
+.metric-value {
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.metric-label {
+  font-size: 0.825rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-top: 0.25rem;
+}
+
+.card-purple { border-left: 4px solid #6366f1; }
+.card-blue { border-left: 4px solid #0284c7; }
+.card-green { border-left: 4px solid #10b981; }
+.card-orange { border-left: 4px solid #f59e0b; }
+.card-teal { border-left: 4px solid #14b8a6; }
+.card-red { border-left: 4px solid #ef4444; }
+
+.quick-buttons-row {
+  display: flex;
+  gap: 1rem;
+}
+
+/* Admin Tables */
+.table-responsive {
+  overflow-x: auto;
+  padding: 0 !important;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 1rem 1.25rem;
   border-bottom: 1px solid var(--border);
-  padding-bottom: 0.75rem;
-  margin-bottom: 1rem;
 }
 
-.post-title {
-  font-size: 1.1rem;
-  color: var(--text-main);
+.admin-table th {
+  background-color: var(--primary-light);
+  font-weight: 700;
+  color: var(--primary);
+  font-size: 0.8rem;
+  text-transform: uppercase;
 }
+
+.admin-table tbody tr:hover {
+  background-color: #f8fafc;
+}
+
+.row-blocked {
+  background-color: #fff5f5;
+}
+
+.badge-you {
+  font-size: 0.75rem;
+  color: var(--primary);
+  margin-left: 0.4rem;
+  font-weight: bold;
+}
+
+.role-badge {
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.role-client { background: #e0e7ff; color: #3730a3; }
+.role-tutor { background: #d1fae5; color: #065f46; }
+.role-admin { background: #fee2e2; color: #991b1b; }
 
 .status-badge {
   padding: 0.25rem 0.65rem;
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.5px;
 }
 
-.status-open {
+.status-active, .status-open {
   background: var(--success-bg);
   color: var(--success);
   border: 1px solid #a7f3d0;
 }
 
-.post-details-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.6rem;
-  font-size: 0.9rem;
+.status-blocked, .status-closed {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid #fecaca;
 }
 
-.detail-item {
+.action-buttons-group {
   display: flex;
-  flex-direction: column;
-}
-
-.detail-label {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  font-weight: 600;
-}
-
-.detail-value {
-  font-weight: 600;
-  color: var(--text-main);
-}
-
-.highlight-salary {
-  color: #047857;
-  font-size: 1.05rem;
-  font-weight: 700;
-}
-
-.badge-mode {
-  display: inline-block;
-  padding: 0.15rem 0.5rem;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
-.mode-offline { background: #e0f2fe; color: #0369a1; }
-.mode-online { background: #fef3c7; color: #b45309; }
-
-.post-notes {
-  margin-top: 1rem;
-  background: var(--background);
-  padding: 0.75rem;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
-
-.post-card-footer {
-  margin-top: 1.25rem;
-  padding-top: 0.75rem;
-  border-top: 1px dashed var(--border);
-  font-size: 0.8rem;
-  color: var(--text-muted);
+  gap: 0.5rem;
 }
 
 /* Modal */
@@ -523,6 +592,10 @@ body {
   border-radius: var(--radius);
   padding: 2rem;
   box-shadow: var(--shadow-lg);
+}
+
+.modal-sm {
+  max-width: 400px;
 }
 
 .modal-header {
@@ -556,19 +629,19 @@ body {
 
 .quick-demo-buttons {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
 .btn-demo {
   flex: 1;
-  padding: 0.4rem 0.5rem;
-  font-size: 0.75rem;
+  padding: 0.4rem 0.3rem;
+  font-size: 0.725rem;
   border-radius: 6px;
 }
 
 .btn-guardian { background: #4f46e5; color: white; }
-.btn-student { background: #0284c7; color: white; }
 .btn-tutor { background: #059669; color: white; }
+.btn-admin { background: #dc2626; color: white; }
 
 .modal-divider {
   text-align: center;

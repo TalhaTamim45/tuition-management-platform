@@ -18,29 +18,31 @@ function PostTuition({ currentUser, token, API_URL, setCurrentView, openAuthModa
   const [serverError, setServerError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
 
-  // 1. Guard check: Only logged-in Guardians or Students can post
+  const userRole = currentUser?.role?.toLowerCase() || ''
+
+  // 1. Guard check: Only logged-in Clients can post
   if (!currentUser) {
     return (
       <div className="card text-center p-5 auth-guard-card">
         <h2>🔒 Login Required</h2>
-        <p className="lead">You must be logged in as a <strong>Guardian</strong> or <strong>Student</strong> to post a tuition job requirement.</p>
+        <p className="lead">You must be logged in as a <strong>Client</strong> (Parent or Student looking for a tutor) to post a tuition requirement.</p>
         <div className="mt-4">
           <button className="btn btn-primary btn-lg" onClick={openAuthModal}>
-            Sign In / Register Now
+            Sign In / Register as Client
           </button>
         </div>
       </div>
     )
   }
 
-  if (currentUser.role !== 'Guardian' && currentUser.role !== 'Student') {
+  if (userRole !== 'client') {
     return (
       <div className="card text-center p-5 auth-guard-card">
         <h2>🚫 Access Restricted</h2>
         <p className="lead">
-          Your current account role is <strong>{currentUser.role}</strong>. Only <strong>Guardian</strong> or <strong>Student</strong> accounts are permitted to post tuition jobs.
+          Your current account role is <strong>{userRole.toUpperCase()}</strong>. Only <strong>Client</strong> accounts are permitted to post tuition job requirements.
         </p>
-        <p className="text-muted">If you are a Guardian or Student, please switch accounts or register a new Guardian profile.</p>
+        <p className="text-muted">If you need to find a tutor for a student, please sign in with a Client account.</p>
         <div className="mt-4">
           <button className="btn btn-secondary" onClick={openAuthModal}>
             Switch Account
@@ -54,8 +56,7 @@ function PostTuition({ currentUser, token, API_URL, setCurrentView, openAuthModa
   const handleChange = (e) => {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
-    
-    // Clear error for specific field as user types
+
     if (fieldErrors[name]) {
       setFieldErrors(prev => ({ ...prev, [name]: '' }))
     }
@@ -112,7 +113,6 @@ function PostTuition({ currentUser, token, API_URL, setCurrentView, openAuthModa
     setServerError('')
     setSuccessMessage('')
 
-    // Perform client validation first
     if (!validateForm()) {
       return
     }
@@ -145,7 +145,6 @@ function PostTuition({ currentUser, token, API_URL, setCurrentView, openAuthModa
 
       if (response.ok && data.success) {
         setSuccessMessage('🎉 Tuition post created successfully! Redirecting to My Tuition Posts...')
-        // Clear form
         setFormData({
           title: '',
           student_class: '',
@@ -158,7 +157,6 @@ function PostTuition({ currentUser, token, API_URL, setCurrentView, openAuthModa
           additional_notes: ''
         })
 
-        // Redirect after 1.5 seconds
         setTimeout(() => {
           setCurrentView('my-posts')
         }, 1500)
@@ -178,11 +176,10 @@ function PostTuition({ currentUser, token, API_URL, setCurrentView, openAuthModa
   return (
     <div className="post-tuition-container card">
       <div className="form-header">
-        <h2>📌 Post a Tuition Job Requirement</h2>
-        <p className="subtitle">Fill out the form below to connect with qualified home and online tutors.</p>
+        <h2>📌 Post Your Tuition Requirement</h2>
+        <p className="subtitle">Fill out the form below to connect directly with qualified home and online tutors.</p>
       </div>
 
-      {/* Global Success & Error Banners */}
       {successMessage && (
         <div className="alert alert-success">
           {successMessage}

@@ -5,8 +5,9 @@ function AuthModal({ isOpen, onClose, onLoginSuccess, API_URL }) {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    phone: '',
     password: '',
-    role: 'Guardian'
+    role: 'client'
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -50,7 +51,6 @@ function AuthModal({ isOpen, onClose, onLoginSuccess, API_URL }) {
     setLoading(true)
     setError('')
 
-    // Try logging in as demo account
     try {
       let res = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
@@ -59,13 +59,13 @@ function AuthModal({ isOpen, onClose, onLoginSuccess, API_URL }) {
       })
       let data = await res.json()
 
-      // If account doesn't exist, auto-register it
-      if (!res.ok || !data.success) {
+      // If account doesn't exist, auto-register it (unless admin)
+      if ((!res.ok || !data.success) && demoRole !== 'admin') {
         res = await fetch(`${API_URL}/api/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            name: `Demo ${demoRole}`,
+            name: `Demo ${demoRole.toUpperCase()}`,
             email: demoEmail,
             password: 'password123',
             role: demoRole
@@ -104,26 +104,26 @@ function AuthModal({ isOpen, onClose, onLoginSuccess, API_URL }) {
             <button
               type="button"
               className="btn btn-demo btn-guardian"
-              onClick={() => handleQuickDemoLogin('Guardian', 'guardian@example.com')}
+              onClick={() => handleQuickDemoLogin('client', 'client@example.com')}
               disabled={loading}
             >
-              🛡️ Demo Guardian
-            </button>
-            <button
-              type="button"
-              className="btn btn-demo btn-student"
-              onClick={() => handleQuickDemoLogin('Student', 'student@example.com')}
-              disabled={loading}
-            >
-              🎓 Demo Student
+              👤 Client (Guardian/Student)
             </button>
             <button
               type="button"
               className="btn btn-demo btn-tutor"
-              onClick={() => handleQuickDemoLogin('Tutor', 'tutor@example.com')}
+              onClick={() => handleQuickDemoLogin('tutor', 'tutor@example.com')}
               disabled={loading}
             >
-              📚 Demo Tutor
+              📚 Tutor
+            </button>
+            <button
+              type="button"
+              className="btn btn-demo btn-admin"
+              onClick={() => handleQuickDemoLogin('admin', 'admin@example.com')}
+              disabled={loading}
+            >
+              ⚙️ Admin
             </button>
           </div>
         </div>
@@ -132,17 +132,30 @@ function AuthModal({ isOpen, onClose, onLoginSuccess, API_URL }) {
 
         <form onSubmit={handleSubmit} className="auth-form">
           {!isLoginMode && (
-            <div className="form-group">
-              <label>Full Name</label>
-              <input
-                type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                placeholder="e.g. Fahim Ahmed"
-                required
-              />
-            </div>
+            <>
+              <div className="form-group">
+                <label>Full Name</label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  placeholder="e.g. Fahim Ahmed"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Phone Number (Optional)</label>
+                <input
+                  type="text"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  placeholder="e.g. +8801712345678"
+                />
+              </div>
+            </>
           )}
 
           <div className="form-group">
@@ -171,12 +184,30 @@ function AuthModal({ isOpen, onClose, onLoginSuccess, API_URL }) {
 
           {!isLoginMode && (
             <div className="form-group">
-              <label>Role</label>
-              <select name="role" value={formData.role} onChange={handleChange}>
-                <option value="Guardian">Guardian (Can Post Tuitions)</option>
-                <option value="Student">Student (Can Post Tuitions)</option>
-                <option value="Tutor">Tutor (Applies to Tuitions)</option>
-              </select>
+              <label>I am registering because:</label>
+              <div className="role-options-group">
+                <label className="radio-label">
+                  <input
+                    type="radio"
+                    name="role"
+                    value="client"
+                    checked={formData.role === 'client'}
+                    onChange={handleChange}
+                  />
+                  <span>🙋‍♂️ I need a tutor (Client - Parent / Student)</span>
+                </label>
+
+                <label className="radio-label">
+                  <input
+                    type="radio"
+                    name="role"
+                    value="tutor"
+                    checked={formData.role === 'tutor'}
+                    onChange={handleChange}
+                  />
+                  <span>📚 I want to teach (Tutor)</span>
+                </label>
+              </div>
             </div>
           )}
 

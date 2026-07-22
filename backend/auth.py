@@ -21,7 +21,7 @@ def token_required(f):
     def decorated(*args, **kwargs):
         if request.method == 'OPTIONS':
             return jsonify({"success": True}), 200
-            
+
         token = None
         auth_header = request.headers.get('Authorization')
 
@@ -44,6 +44,14 @@ def token_required(f):
                     "success": False,
                     "error": "Invalid token user not found."
                 }), 401
+            
+            # Check if user account is blocked
+            if getattr(current_user, 'is_blocked', False):
+                return jsonify({
+                    "success": False,
+                    "error": "Your account has been blocked. Please contact support."
+                }), 403
+
             g.current_user = current_user
         except jwt.ExpiredSignatureError:
             return jsonify({
@@ -55,6 +63,28 @@ def token_required(f):
                 "success": False,
                 "error": "Invalid token provided."
             }), 401
+
+        return f(*args, **kwargs)
+    return decorated
+
+def admin_required(f):
+    """Decorator to enforce admin role authorization."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if request.method == 'OPTIONS':
+            return jsonify({"success": True}), 200
+
+        if not hasattr(g, 'current_user') or not g.current_user:
+            return jsonify({
+                "success": False,
+                "error": "Authentication required."
+            }), 401
+
+        if g.current_user.role.lower() != 'admin':
+            return jsonify({
+                "success": False,
+                "error": "Admin privilege required. Access denied."
+            }), 403
 
         return f(*args, **kwargs)
     return decorated

@@ -13,33 +13,28 @@ class TuitionPostTestCase(unittest.TestCase):
         self.app_context = self.app.app_context()
         self.app_context.push()
 
-        # Create test users
-        self.guardian = User(
-            name="Guardian User",
-            email="guardian_test@example.com",
+        # Create test users with unified 'client' and 'tutor' roles
+        self.client_user = User(
+            name="Client User",
+            email="client_test@example.com",
             password_hash=generate_password_hash("password123"),
-            role="Guardian"
+            role="client",
+            is_blocked=False
         )
-        self.student = User(
-            name="Student User",
-            email="student_test@example.com",
-            password_hash=generate_password_hash("password123"),
-            role="Student"
-        )
-        self.tutor = User(
+        self.tutor_user = User(
             name="Tutor User",
             email="tutor_test@example.com",
             password_hash=generate_password_hash("password123"),
-            role="Tutor"
+            role="tutor",
+            is_blocked=False
         )
 
-        db.session.add_all([self.guardian, self.student, self.tutor])
+        db.session.add_all([self.client_user, self.tutor_user])
         db.session.commit()
 
         # Generate tokens
-        self.guardian_token = generate_token(self.guardian.id)
-        self.student_token = generate_token(self.student.id)
-        self.tutor_token = generate_token(self.tutor.id)
+        self.client_token = generate_token(self.client_user.id)
+        self.tutor_token = generate_token(self.tutor_user.id)
 
     def tearDown(self):
         """Clean up database and pop app context after each test."""
@@ -48,7 +43,7 @@ class TuitionPostTestCase(unittest.TestCase):
         self.app_context.pop()
 
     def test_1_successful_tuition_post_creation(self):
-        """Test successful tuition post creation by authenticated guardian."""
+        """Test successful tuition post creation by authenticated client."""
         payload = {
             "title": "Need Class 10 Physics & Chemistry Tutor",
             "student_class": "Class 10",
@@ -64,14 +59,14 @@ class TuitionPostTestCase(unittest.TestCase):
             '/api/tuition-posts',
             data=json.dumps(payload),
             content_type='application/json',
-            headers={'Authorization': f'Bearer {self.guardian_token}'}
+            headers={'Authorization': f'Bearer {self.client_token}'}
         )
         self.assertEqual(response.status_code, 201)
         res_data = json.loads(response.data)
         self.assertTrue(res_data['success'])
         self.assertEqual(res_data['post']['title'], "Need Class 10 Physics & Chemistry Tutor")
         self.assertEqual(res_data['post']['status'], "open")
-        self.assertEqual(res_data['post']['user_id'], self.guardian.id)
+        self.assertEqual(res_data['post']['user_id'], self.client_user.id)
 
     def test_2_missing_required_fields(self):
         """Test validation error when required fields are missing."""
@@ -88,7 +83,7 @@ class TuitionPostTestCase(unittest.TestCase):
             '/api/tuition-posts',
             data=json.dumps(payload),
             content_type='application/json',
-            headers={'Authorization': f'Bearer {self.guardian_token}'}
+            headers={'Authorization': f'Bearer {self.client_token}'}
         )
         self.assertEqual(response.status_code, 400)
         res_data = json.loads(response.data)
@@ -111,7 +106,7 @@ class TuitionPostTestCase(unittest.TestCase):
             '/api/tuition-posts',
             data=json.dumps(payload),
             content_type='application/json',
-            headers={'Authorization': f'Bearer {self.guardian_token}'}
+            headers={'Authorization': f'Bearer {self.client_token}'}
         )
         self.assertEqual(response.status_code, 400)
         res_data = json.loads(response.data)
@@ -133,7 +128,7 @@ class TuitionPostTestCase(unittest.TestCase):
             '/api/tuition-posts',
             data=json.dumps(payload),
             content_type='application/json',
-            headers={'Authorization': f'Bearer {self.guardian_token}'}
+            headers={'Authorization': f'Bearer {self.client_token}'}
         )
         self.assertEqual(response.status_code, 400)
         res_data = json.loads(response.data)
@@ -170,10 +165,9 @@ class TuitionPostTestCase(unittest.TestCase):
         self.assertEqual(res_tutor.status_code, 403)
 
     def test_6_retrieving_my_tuition_posts(self):
-        """Test fetching tuition posts created by the logged-in user."""
-        # Create 2 posts for guardian
+        """Test fetching tuition posts created by the logged-in client."""
         post1 = TuitionPost(
-            user_id=self.guardian.id,
+            user_id=self.client_user.id,
             title="Post 1",
             student_class="Class 6",
             subjects="Math",
@@ -184,7 +178,7 @@ class TuitionPostTestCase(unittest.TestCase):
             status="open"
         )
         post2 = TuitionPost(
-            user_id=self.guardian.id,
+            user_id=self.client_user.id,
             title="Post 2",
             student_class="Class 7",
             subjects="Science",
@@ -200,7 +194,7 @@ class TuitionPostTestCase(unittest.TestCase):
         # Retrieve my posts
         response = self.client.get(
             '/api/tuition-posts/my-posts',
-            headers={'Authorization': f'Bearer {self.guardian_token}'}
+            headers={'Authorization': f'Bearer {self.client_token}'}
         )
         self.assertEqual(response.status_code, 200)
         res_data = json.loads(response.data)
