@@ -1,195 +1,146 @@
-from flask import Blueprint, request, jsonify, g
-from models import db, User, TuitionPost
-from auth import token_required, admin_required
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from database import get_db
+from models import User, TuitionPost
+from schemas import RoleUpdate, BlockUpdate, StatusUpdate
+from auth import require_admin
 
-admin_bp = Blueprint('admin', __name__)
+admin_router = APIRouter(prefix="/api/admin", tags=["Admin Moderation"])
 
-@admin_bp.route('/api/admin/dashboard', methods=['GET', 'OPTIONS'])
-@token_required
-@admin_required
-def get_admin_dashboard():
-    """
-    GET /api/admin/dashboard
-    Returns summary statistics for the admin dashboard.
-    """
-    total_users = User.query.count()
-    total_clients = User.query.filter_by(role='client').count()
-    total_tutors = User.query.filter_by(role='tutor').count()
-    total_posts = TuitionPost.query.count()
-    open_posts = TuitionPost.query.filter_by(status='open').count()
-    closed_posts = TuitionPost.query.filter_by(status='closed').count()
-
-    return jsonify({
-        "success": True,
-        "total_users": total_users,
-        "total_clients": total_clients,
-        "total_tutors": total_tutors,
-        "total_tuition_posts": total_posts,
-        "open_tuition_posts": open_posts,
-        "closed_tuition_posts": closed_posts,
-        "total_applications": 0,
-        "total_reported_items": 0
-    }), 200
-
-
-@admin_bp.route('/api/admin/users', methods=['GET', 'OPTIONS'])
-@token_required
-@admin_required
-def get_admin_users():
-    """
-    GET /api/admin/users
-    Fetch all users with optional search and filtering.
-    """
-    search_query = request.args.get('search', '').strip().lower()
-    role_filter = request.args.get('role', '').strip().lower()
-    status_filter = request.args.get('status', '').strip().lower()
-
-    query = User.query
-
-    if search_query:
-        query = query.filter(
-            (User.name.ilike(f"%{search_query}%")) |
-            (User.email.ilike(f"%{search_query}%"))
-        )
-
-    if role_filter and role_filter in ['client', 'tutor', 'admin']:
-        query = query.filter_by(role=role_filter)
-
-    if status_filter == 'blocked':
-        query = query.filter_by(is_blocked=True)
-    elif status_filter == 'active':
-        query = query.filter_by(is_blocked=False)
-
-    users = query.order_by(User.created_at.desc()).all()
-    return jsonify({
+@admin_router.get("/users")
+def list_all_users(
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    users = db.query(User).order_by(User.id.asc()).all()
+    return {
         "success": True,
         "count": len(users),
         "users": [user.to_dict() for user in users]
-    }), 200
+    }
 
+@admin_router.put("/users/{user_id}/role")
+def update_user_role(
+    user_id: int,
+    data: RoleUpdate,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    new_role = data.role.strip().lower()
+    if new_role not in ['client', 'tutor', 'admin']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Role must be 'client', 'tutor', or 'admin'"
+        )
 
-@admin_bp.route('/api/admin/users/<int:user_id>', methods=['GET', 'OPTIONS'])
-@token_required
-@admin_required
-def get_admin_user_details(user_id):
-    """
-    GET /api/admin/users/<user_id>
-    Retrieve single user details by ID.
-    """
-    user = db.session.get(User, user_id)
-    if not user:
-        return jsonify({"success": False, "error": "User not found."}), 404
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Target user not found"
+        )
 
-    user_data = user.to_dict()
-    user_data['posts_count'] = TuitionPost.query.filter_by(user_id=user.id).count()
-    return jsonify({
+    target_user.role = new_role
+    db.commit()
+    db.refresh(target_user)
+
+    return {
         "success": True,
-        "user": user_data
-    }), 200
+        "message": f"User role updated to '{new_role}' successfully.",
+        "user": target_user.to_dict()
+    }
 
+@admin_router.put("/users/{user_id}/block")
+def toggle_user_block(
+    user_id: int,
+    data: BlockUpdate,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    if user_id == current_admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Admin cannot block their own account."
+        )
 
-@admin_bp.route('/api/admin/users/<int:user_id>/status', methods=['PATCH', 'OPTIONS'])
-@token_required
-@admin_required
-def update_user_status(user_id):
-    """
-    PATCH /api/admin/users/<user_id>/status
-    Block or unblock a user.
-    """
-    if request.method == 'OPTIONS':
-        return jsonify({"success": True}), 200
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Target user not found"
+        )
 
-    user = db.session.get(User, user_id)
-    if not user:
-        return jsonify({"success": False, "error": "User not found."}), 404
+    target_user.is_blocked = bool(data.is_blocked)
+    db.commit()
+    db.refresh(target_user)
 
-    # Prevent admin from blocking their own account
-    if user.id == g.current_user.id:
-        return jsonify({
-            "success": False,
-            "error": "Cannot block your own admin account."
-        }), 400
-
-    data = request.get_json() or {}
-    if 'is_blocked' in data:
-        user.is_blocked = bool(data['is_blocked'])
-    else:
-        # Toggle status if not explicitly provided
-        user.is_blocked = not user.is_blocked
-
-    db.session.commit()
-    status_str = "blocked" if user.is_blocked else "unblocked"
-    return jsonify({
+    status_str = "blocked" if target_user.is_blocked else "unblocked"
+    return {
         "success": True,
-        "message": f"User {user.name} has been {status_str} successfully.",
-        "user": user.to_dict()
-    }), 200
+        "message": f"User has been {status_str} successfully.",
+        "user": target_user.to_dict()
+    }
 
-
-@admin_bp.route('/api/admin/tuition-posts', methods=['GET', 'OPTIONS'])
-@token_required
-@admin_required
-def get_admin_tuition_posts():
-    """
-    GET /api/admin/tuition-posts
-    Retrieve all tuition posts across all users for admin management.
-    """
-    posts = TuitionPost.query.order_by(TuitionPost.created_at.desc()).all()
-    return jsonify({
+@admin_router.get("/tuition-posts")
+def list_all_tuition_posts(
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    posts = db.query(TuitionPost).order_by(TuitionPost.created_at.desc()).all()
+    return {
         "success": True,
         "count": len(posts),
         "posts": [post.to_dict() for post in posts]
-    }), 200
+    }
 
-
-@admin_bp.route('/api/admin/tuition-posts/<int:post_id>/status', methods=['PATCH', 'OPTIONS'])
-@token_required
-@admin_required
-def update_post_status(post_id):
-    """
-    PATCH /api/admin/tuition-posts/<post_id>/status
-    Update post status (e.g. 'open' or 'closed').
-    """
-    if request.method == 'OPTIONS':
-        return jsonify({"success": True}), 200
-
-    post = db.session.get(TuitionPost, post_id)
-    if not post:
-        return jsonify({"success": False, "error": "Tuition post not found."}), 404
-
-    data = request.get_json() or {}
-    new_status = data.get('status', '').strip().lower()
-
+@admin_router.put("/tuition-posts/{post_id}/status")
+def update_post_status(
+    post_id: int,
+    data: StatusUpdate,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    new_status = data.status.strip().lower()
     if new_status not in ['open', 'closed']:
-        return jsonify({"success": False, "error": "Invalid status value. Must be 'open' or 'closed'."}), 400
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Status must be 'open' or 'closed'"
+        )
+
+    post = db.query(TuitionPost).filter(TuitionPost.id == post_id).first()
+    if not post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tuition post not found"
+        )
 
     post.status = new_status
-    db.session.commit()
-    return jsonify({
+    db.commit()
+    db.refresh(post)
+
+    return {
         "success": True,
-        "message": f"Tuition post status updated to '{new_status}'.",
+        "message": f"Tuition post status updated to '{new_status}' successfully.",
         "post": post.to_dict()
-    }), 200
+    }
 
-
-@admin_bp.route('/api/admin/tuition-posts/<int:post_id>', methods=['DELETE', 'OPTIONS'])
-@token_required
-@admin_required
-def delete_tuition_post(post_id):
-    """
-    DELETE /api/admin/tuition-posts/<post_id>
-    Delete an inappropriate tuition post.
-    """
-    if request.method == 'OPTIONS':
-        return jsonify({"success": True}), 200
-
-    post = db.session.get(TuitionPost, post_id)
+@admin_router.delete("/tuition-posts/{post_id}")
+def admin_delete_tuition_post(
+    post_id: int,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    post = db.query(TuitionPost).filter(TuitionPost.id == post_id).first()
     if not post:
-        return jsonify({"success": False, "error": "Tuition post not found."}), 404
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tuition post not found"
+        )
 
-    db.session.delete(post)
-    db.session.commit()
-    return jsonify({
+    db.delete(post)
+    db.commit()
+
+    return {
         "success": True,
-        "message": f"Tuition post #{post_id} deleted successfully."
-    }), 200
+        "message": f"Tuition post {post_id} deleted successfully by admin."
+    }

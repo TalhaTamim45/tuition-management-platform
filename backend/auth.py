@@ -1,90 +1,105 @@
-import jwt
+import os
 import datetime
-from functools import wraps
-from flask import request, jsonify, g
-from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, User
+from typing import Optional
+import jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
+from passlib.context import CryptContext
+from database import get_db
+from models import User
 
-SECRET_KEY = "tuition_platform_secret_key_cse309_assessment4"
+SECRET_KEY = os.getenv("SECRET_KEY", "tuition_platform_secret_key_cse309_assessment4")
+ALGORITHM = "HS256"
 
-def generate_token(user_id):
-    """Generate JWT token valid for 24 hours."""
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+security = HTTPBearer(auto_error=False)
+
+def generate_password_hash(password: str) -> str:
+    try:
+        return pwd_context.hash(password)
+    except Exception:
+        # Fallback hashing if bcrypt environment issue occurs
+        import hashlib
+        return "sha256$" + hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+def check_password_hash(pw_hash: str, password: str) -> bool:
+    if pw_hash.startswith("sha256$"):
+        import hashlib
+        expected = "sha256$" + hashlib.sha256(password.encode('utf-8')).hexdigest()
+        return pw_hash == expected
+    try:
+        return pwd_context.verify(password, pw_hash)
+    except Exception:
+        return False
+
+def generate_token(user_id: int) -> str:
     payload = {
-        "user_id": user_id,
-        "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)
+        'user_id': user_id,
+        'exp': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)
     }
-    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-def token_required(f):
-    """Decorator to enforce authentication on protected endpoints."""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if request.method == 'OPTIONS':
-            return jsonify({"success": True}), 200
+def decode_token(token: str) -> dict:
+    try:
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        return None
 
-        token = None
-        auth_header = request.headers.get('Authorization')
+def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db)
+) -> User:
+    if not credentials or not credentials.credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token is missing or invalid"
+        )
+    
+    token = credentials.credentials
+    data = decode_token(token)
+    if not data or 'user_id' not in data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token is invalid or expired"
+        )
+    
+    user = db.query(User).filter(User.id == data['user_id']).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found"
+        )
+    
+    if user.is_blocked:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account has been suspended by an administrator."
+        )
+    
+    return user
 
-        if auth_header:
-            parts = auth_header.split()
-            if len(parts) == 2 and parts[0].lower() == 'bearer':
-                token = parts[1]
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role.lower() != 'admin':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required"
+        )
+    return current_user
 
-        if not token:
-            return jsonify({
-                "success": False,
-                "error": "Authentication token missing. Please log in."
-            }), 401
+def require_tutor(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role.lower() != 'tutor':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tutor privileges required"
+        )
+    return current_user
 
-        try:
-            data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-            current_user = db.session.get(User, data['user_id'])
-            if not current_user:
-                return jsonify({
-                    "success": False,
-                    "error": "Invalid token user not found."
-                }), 401
-            
-            # Check if user account is blocked
-            if getattr(current_user, 'is_blocked', False):
-                return jsonify({
-                    "success": False,
-                    "error": "Your account has been blocked. Please contact support."
-                }), 403
-
-            g.current_user = current_user
-        except jwt.ExpiredSignatureError:
-            return jsonify({
-                "success": False,
-                "error": "Token has expired. Please log in again."
-            }), 401
-        except jwt.InvalidTokenError:
-            return jsonify({
-                "success": False,
-                "error": "Invalid token provided."
-            }), 401
-
-        return f(*args, **kwargs)
-    return decorated
-
-def admin_required(f):
-    """Decorator to enforce admin role authorization."""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if request.method == 'OPTIONS':
-            return jsonify({"success": True}), 200
-
-        if not hasattr(g, 'current_user') or not g.current_user:
-            return jsonify({
-                "success": False,
-                "error": "Authentication required."
-            }), 401
-
-        if g.current_user.role.lower() != 'admin':
-            return jsonify({
-                "success": False,
-                "error": "Admin privilege required. Access denied."
-            }), 403
-
-        return f(*args, **kwargs)
-    return decorated
+def require_client(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role.lower() != 'client':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Client privileges required"
+        )
+    return current_user

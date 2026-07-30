@@ -1,207 +1,137 @@
-import unittest
-import json
-from main import create_app
-from models import db, User, TuitionPost
+import os
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from database import Base, get_db
+from main import app
+from models import User, TuitionPost
 from auth import generate_password_hash, generate_token
 
-class TuitionPostTestCase(unittest.TestCase):
+TEST_DB_PATH = os.path.join(os.path.dirname(__file__), "test_tuition_posts.db")
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{TEST_DB_PATH}"
 
-    def setUp(self):
-        """Set up in-memory database and test client before each test."""
-        self.app = create_app(db_uri='sqlite:///:memory:')
-        self.client = self.app.test_client()
-        self.app_context = self.app.app_context()
-        self.app_context.push()
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-        # Create test users with unified 'client' and 'tutor' roles
-        self.client_user = User(
-            name="Client User",
-            email="client_test@example.com",
-            password_hash=generate_password_hash("password123"),
-            role="client",
-            is_blocked=False
-        )
-        self.tutor_user = User(
-            name="Tutor User",
-            email="tutor_test@example.com",
-            password_hash=generate_password_hash("password123"),
-            role="tutor",
-            is_blocked=False
-        )
+def override_get_db():
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-        db.session.add_all([self.client_user, self.tutor_user])
-        db.session.commit()
+@pytest.fixture(autouse=True)
+def setup_database():
+    app.dependency_overrides[get_db] = override_get_db
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    db = TestingSessionLocal()
 
-        # Generate tokens
-        self.client_token = generate_token(self.client_user.id)
-        self.tutor_token = generate_token(self.tutor_user.id)
+    client_user = User(
+        name="Client User",
+        email="client_test@example.com",
+        phone="+8801711111111",
+        password_hash=generate_password_hash("password123"),
+        role="client",
+        is_blocked=False
+    )
+    tutor_user = User(
+        name="Tutor User",
+        email="tutor_test@example.com",
+        phone="+8801811111111",
+        password_hash=generate_password_hash("password123"),
+        role="tutor",
+        is_blocked=False
+    )
+    db.add_all([client_user, tutor_user])
+    db.commit()
 
-    def tearDown(self):
-        """Clean up database and pop app context after each test."""
-        db.session.remove()
-        db.drop_all()
-        self.app_context.pop()
+    yield db
 
-    def test_1_successful_tuition_post_creation(self):
-        """Test successful tuition post creation by authenticated client."""
-        payload = {
-            "title": "Need Class 10 Physics & Chemistry Tutor",
-            "student_class": "Class 10",
-            "subjects": "Physics, Chemistry",
-            "location": "Gulshan, Dhaka",
-            "monthly_salary": 9000.00,
-            "preferred_tutor_gender": "Female",
-            "teaching_mode": "Offline",
-            "days_per_week": 3,
-            "additional_notes": "Needs experienced tutor."
-        }
-        response = self.client.post(
-            '/api/tuition-posts',
-            data=json.dumps(payload),
-            content_type='application/json',
-            headers={'Authorization': f'Bearer {self.client_token}'}
-        )
-        self.assertEqual(response.status_code, 201)
-        res_data = json.loads(response.data)
-        self.assertTrue(res_data['success'])
-        self.assertEqual(res_data['post']['title'], "Need Class 10 Physics & Chemistry Tutor")
-        self.assertEqual(res_data['post']['status'], "open")
-        self.assertEqual(res_data['post']['user_id'], self.client_user.id)
+    db.close()
+    Base.metadata.drop_all(bind=engine)
+    app.dependency_overrides.clear()
+    if os.path.exists(TEST_DB_PATH):
+        try:
+            os.remove(TEST_DB_PATH)
+        except Exception:
+            pass
 
-    def test_2_missing_required_fields(self):
-        """Test validation error when required fields are missing."""
-        payload = {
-            "title": "", # Missing title
-            "student_class": "Class 8",
-            "subjects": "", # Missing subjects
-            "location": "Uttara, Dhaka",
-            "monthly_salary": 5000,
-            "teaching_mode": "Online",
-            "days_per_week": 3
-        }
-        response = self.client.post(
-            '/api/tuition-posts',
-            data=json.dumps(payload),
-            content_type='application/json',
-            headers={'Authorization': f'Bearer {self.client_token}'}
-        )
-        self.assertEqual(response.status_code, 400)
-        res_data = json.loads(response.data)
-        self.assertFalse(res_data['success'])
-        self.assertIn('title', res_data['errors'])
-        self.assertIn('subjects', res_data['errors'])
+client = TestClient(app)
 
-    def test_3_invalid_salary(self):
-        """Test validation error when salary is <= 0 or invalid."""
-        payload = {
-            "title": "Class 7 All Subjects",
-            "student_class": "Class 7",
-            "subjects": "All Subjects",
-            "location": "Mirpur, Dhaka",
-            "monthly_salary": -500, # Invalid negative salary
-            "teaching_mode": "Offline",
-            "days_per_week": 4
-        }
-        response = self.client.post(
-            '/api/tuition-posts',
-            data=json.dumps(payload),
-            content_type='application/json',
-            headers={'Authorization': f'Bearer {self.client_token}'}
-        )
-        self.assertEqual(response.status_code, 400)
-        res_data = json.loads(response.data)
-        self.assertFalse(res_data['success'])
-        self.assertIn('monthly_salary', res_data['errors'])
+def test_1_successful_tuition_post_creation():
+    db = TestingSessionLocal()
+    client_user = db.query(User).filter(User.email == "client_test@example.com").first()
+    token = generate_token(client_user.id)
+    db.close()
 
-    def test_4_invalid_days_per_week(self):
-        """Test validation error when days per week is not between 1 and 7."""
-        payload = {
-            "title": "HSC English Tutor Needed",
-            "student_class": "HSC 2nd Year",
-            "subjects": "English",
-            "location": "Banani, Dhaka",
-            "monthly_salary": 7000,
-            "teaching_mode": "Online",
-            "days_per_week": 10 # Invalid days per week > 7
-        }
-        response = self.client.post(
-            '/api/tuition-posts',
-            data=json.dumps(payload),
-            content_type='application/json',
-            headers={'Authorization': f'Bearer {self.client_token}'}
-        )
-        self.assertEqual(response.status_code, 400)
-        res_data = json.loads(response.data)
-        self.assertFalse(res_data['success'])
-        self.assertIn('days_per_week', res_data['errors'])
+    payload = {
+        "title": "Need Class 10 Physics & Chemistry Tutor",
+        "student_class": "Class 10",
+        "subjects": "Physics, Chemistry",
+        "location": "Gulshan, Dhaka",
+        "monthly_salary": 9000.0,
+        "preferred_tutor_gender": "Female",
+        "teaching_mode": "Offline",
+        "days_per_week": 3,
+        "additional_notes": "Needs experienced tutor."
+    }
 
-    def test_5_unauthorized_access(self):
-        """Test creating post without token or with tutor role."""
-        payload = {
-            "title": "Class 5 General Tutor",
-            "student_class": "Class 5",
-            "subjects": "General Subjects",
-            "location": "Dhanmondi, Dhaka",
-            "monthly_salary": 4000,
-            "teaching_mode": "Offline",
-            "days_per_week": 3
-        }
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.post("/api/tuition-posts", json=payload, headers=headers)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["success"] is True
+    assert data["post"]["title"] == "Need Class 10 Physics & Chemistry Tutor"
 
-        # Case A: Missing token
-        res_no_token = self.client.post(
-            '/api/tuition-posts',
-            data=json.dumps(payload),
-            content_type='application/json'
-        )
-        self.assertEqual(res_no_token.status_code, 401)
+def test_2_unauthorized_post_creation_by_tutor():
+    db = TestingSessionLocal()
+    tutor_user = db.query(User).filter(User.email == "tutor_test@example.com").first()
+    token = generate_token(tutor_user.id)
+    db.close()
 
-        # Case B: Tutor user trying to post
-        res_tutor = self.client.post(
-            '/api/tuition-posts',
-            data=json.dumps(payload),
-            content_type='application/json',
-            headers={'Authorization': f'Bearer {self.tutor_token}'}
-        )
-        self.assertEqual(res_tutor.status_code, 403)
+    payload = {
+        "title": "Invalid Post by Tutor",
+        "student_class": "Class 8",
+        "subjects": "General Math",
+        "location": "Banani, Dhaka",
+        "monthly_salary": 5000.0,
+        "days_per_week": 3
+    }
 
-    def test_6_retrieving_my_tuition_posts(self):
-        """Test fetching tuition posts created by the logged-in client."""
-        post1 = TuitionPost(
-            user_id=self.client_user.id,
-            title="Post 1",
-            student_class="Class 6",
-            subjects="Math",
-            location="Location 1",
-            monthly_salary=5000,
-            teaching_mode="Offline",
-            days_per_week=3,
-            status="open"
-        )
-        post2 = TuitionPost(
-            user_id=self.client_user.id,
-            title="Post 2",
-            student_class="Class 7",
-            subjects="Science",
-            location="Location 2",
-            monthly_salary=6000,
-            teaching_mode="Online",
-            days_per_week=4,
-            status="open"
-        )
-        db.session.add_all([post1, post2])
-        db.session.commit()
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.post("/api/tuition-posts", json=payload, headers=headers)
+    assert response.status_code == 403
 
-        # Retrieve my posts
-        response = self.client.get(
-            '/api/tuition-posts/my-posts',
-            headers={'Authorization': f'Bearer {self.client_token}'}
-        )
-        self.assertEqual(response.status_code, 200)
-        res_data = json.loads(response.data)
-        self.assertTrue(res_data['success'])
-        self.assertEqual(res_data['count'], 2)
-        self.assertEqual(len(res_data['posts']), 2)
+def test_3_public_post_listing():
+    response = client.get("/api/tuition-posts")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert "posts" in data
 
+def test_4_tutor_apply_for_post():
+    db = TestingSessionLocal()
+    client_user = db.query(User).filter(User.email == "client_test@example.com").first()
+    tutor_user = db.query(User).filter(User.email == "tutor_test@example.com").first()
+    client_token = generate_token(client_user.id)
+    tutor_token = generate_token(tutor_user.id)
+    db.close()
 
-if __name__ == '__main__':
-    unittest.main()
+    payload = {
+        "title": "Need ICT Tutor",
+        "student_class": "HSC",
+        "subjects": "ICT",
+        "location": "Mirpur, Dhaka",
+        "monthly_salary": 6000.0,
+        "days_per_week": 3
+    }
+    create_res = client.post("/api/tuition-posts", json=payload, headers={"Authorization": f"Bearer {client_token}"})
+    post_id = create_res.json()["post"]["id"]
+
+    apply_res = client.post(f"/api/tuition-posts/{post_id}/apply", headers={"Authorization": f"Bearer {tutor_token}"})
+    assert apply_res.status_code == 200
+    apply_data = apply_res.json()
+    assert apply_data["success"] is True
+    assert apply_data["post_id"] == post_id

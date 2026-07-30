@@ -1,110 +1,22 @@
 import os
-from flask import Flask, jsonify
-from flask_cors import CORS
-from sqlalchemy import text
-from models import db, User, TuitionPost
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from database import engine, Base, SessionLocal
+from models import User, TuitionPost
 from auth import generate_password_hash
-from routes_auth import auth_bp
-from routes_tuition_posts import tuition_posts_bp
-from routes_admin import admin_bp
+from routes_auth import auth_router
+from routes_tuition_posts import tuition_posts_router
+from routes_admin import admin_router
 
-def create_app(db_uri=None):
-    app = Flask(__name__)
-
-    # Configuration
-    base_dir = os.path.abspath(os.path.dirname(__file__))
-    app.config['SQLALCHEMY_DATABASE_URI'] = db_uri or f"sqlite:///{os.path.join(base_dir, 'tuition_platform.db')}"
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', "tuition_platform_secret_key_cse309_assessment4")
-
-    # CORS configuration allowing cross-origin requests from Vite frontend
-    CORS(app, resources={
-        r"/api/*": {
-            "origins": "*",
-            "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"]
-        }
-    })
-
-    # Initialize extensions
-    db.init_app(app)
-
-    # Register blueprints
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(tuition_posts_bp)
-    app.register_blueprint(admin_bp)
-
-    @app.route("/")
-    def read_root():
-        return jsonify({
-            "status": "online",
-            "message": "Tuition Management Platform API is running."
-        })
-
-    @app.route("/api/health", methods=["GET"])
-    def health_check():
-        return jsonify({
-            "status": "Backend is running",
-            "database": "Connected"
-        })
-
-    # Error Handlers
-    @app.errorhandler(404)
-    def not_found(e):
-        return jsonify({"success": False, "error": "Resource not found"}), 404
-
-    @app.errorhandler(500)
-    def server_error(e):
-        return jsonify({"success": False, "error": "Internal server error"}), 500
-
-    with app.app_context():
-        db.create_all()
-        migrate_database()
-        seed_admin_user()
-        seed_demo_data()
-
-    return app
-
-def migrate_database():
-    """Safely migrate database schema and legacy user roles."""
-    with db.engine.connect() as conn:
-        # 1. Add missing 'phone' column if not present
-        try:
-            conn.execute(text("ALTER TABLE users ADD COLUMN phone VARCHAR(20) DEFAULT ''"))
-            conn.commit()
-        except Exception:
-            pass  # Column already exists
-
-        # 2. Add missing 'is_blocked' column if not present
-        try:
-            conn.execute(text("ALTER TABLE users ADD COLUMN is_blocked BOOLEAN DEFAULT 0"))
-            conn.commit()
-        except Exception:
-            pass  # Column already exists
-
-    # 3. Safe Role Unification Migration: Convert legacy roles to 'client', 'tutor', 'admin'
-    users = User.query.all()
-    for user in users:
-        current_role = (user.role or '').strip().lower()
-        if current_role in ['guardian', 'student', 'student_guardian', '']:
-            user.role = 'client'
-        elif current_role == 'tutor':
-            user.role = 'tutor'
-        elif current_role == 'admin':
-            user.role = 'admin'
-        else:
-            user.role = 'client'
-    db.session.commit()
-
-def seed_admin_user():
-    """Seed initial admin account safely from environment variables or defaults."""
+def seed_admin_user(db):
     admin_email = os.getenv("ADMIN_EMAIL", "admin@example.com").strip().lower()
     admin_name = os.getenv("ADMIN_NAME", "System Admin").strip()
     admin_password = os.getenv("ADMIN_PASSWORD", "admin123").strip()
 
-    admin_exists = User.query.filter_by(role='admin').first()
+    admin_exists = db.query(User).filter(User.role == 'admin').first()
     if not admin_exists:
-        existing_by_email = User.query.filter_by(email=admin_email).first()
+        existing_by_email = db.query(User).filter(User.email == admin_email).first()
         if existing_by_email:
             existing_by_email.role = 'admin'
             existing_by_email.password_hash = generate_password_hash(admin_password)
@@ -117,12 +29,11 @@ def seed_admin_user():
                 role="admin",
                 is_blocked=False
             )
-            db.session.add(new_admin)
-        db.session.commit()
+            db.add(new_admin)
+        db.commit()
 
-def seed_demo_data():
-    """Seed initial sample users and tuition posts if demo data is missing."""
-    if User.query.filter_by(role='client').count() == 0:
+def seed_demo_data(db):
+    if db.query(User).filter(User.role == 'client').count() == 0:
         client = User(
             name="Fahim Ahmed (Client)",
             email="client@example.com",
@@ -139,10 +50,9 @@ def seed_demo_data():
             role="tutor",
             is_blocked=False
         )
-        db.session.add_all([client, tutor])
-        db.session.commit()
+        db.add_all([client, tutor])
+        db.commit()
 
-        # Seed sample tuition post for client
         sample_post = TuitionPost(
             user_id=client.id,
             title="Need Class 9 Higher Math & Physics Tutor",
@@ -156,10 +66,58 @@ def seed_demo_data():
             additional_notes="Looking for a patient BUET or DU tutor for home tutoring.",
             status="open"
         )
-        db.session.add(sample_post)
-        db.session.commit()
+        db.add(sample_post)
+        db.commit()
 
-app = create_app()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup database creation and seeding
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        seed_admin_user(db)
+        seed_demo_data(db)
+    finally:
+        db.close()
+    yield
+
+app = FastAPI(
+    title="Tuition Management Platform API",
+    version="1.0.0",
+    description="FastAPI Backend for CSE309 Tuition Management Platform",
+    lifespan=lifespan
+)
+
+# Enable CORS for frontend compatibility
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include Routers
+app.include_router(auth_router)
+app.include_router(tuition_posts_router)
+app.include_router(admin_router)
+
+@app.get("/")
+def read_root():
+    return {
+        "status": "online",
+        "message": "Tuition Management Platform FastAPI Backend is running.",
+        "docs": "http://localhost:5000/docs"
+    }
+
+@app.get("/api/health")
+def health_check():
+    return {
+        "status": "Backend is running",
+        "framework": "FastAPI",
+        "database": "Connected"
+    }
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=5000, reload=True)

@@ -1,158 +1,169 @@
-from flask import Blueprint, request, jsonify, g
-from models import db, TuitionPost
-from auth import token_required
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy.orm import Session
+from database import get_db
+from models import User, TuitionPost
+from schemas import TuitionPostCreate
+from auth import get_current_user, require_client, require_tutor
 
-tuition_posts_bp = Blueprint('tuition_posts', __name__)
+tuition_posts_router = APIRouter(prefix="/api/tuition-posts", tags=["Tuition Posts"])
 
-@tuition_posts_bp.route('/api/tuition-posts', methods=['POST', 'OPTIONS'])
-@token_required
-def create_tuition_post():
-    """
-    POST /api/tuition-posts
-    Create a new tuition post.
-    Access strictly restricted to logged-in users with 'client' role.
-    """
-    if request.method == 'OPTIONS':
-        return jsonify({"success": True}), 200
+@tuition_posts_router.get("")
+@tuition_posts_router.get("/")
+def get_all_posts(
+    student_class: Optional[str] = Query(None),
+    location: Optional[str] = Query(None),
+    status_filter: Optional[str] = Query(None, alias="status"),
+    db: Session = Depends(get_db)
+):
+    query = db.query(TuitionPost)
 
-    current_user = g.current_user
-
-    # Authorization Check: ONLY Client role can create tuition job posts
-    if current_user.role.lower() != 'client':
-        return jsonify({
-            "success": False,
-            "error": "Only clients can create tuition posts"
-        }), 403
-
-    data = request.get_json() or {}
-
-    # Extract fields
-    title = data.get('title', '')
-    student_class = data.get('student_class', '')
-    subjects = data.get('subjects', '')
-    location = data.get('location', '')
-    monthly_salary = data.get('monthly_salary')
-    preferred_tutor_gender = data.get('preferred_tutor_gender', 'Any')
-    teaching_mode = data.get('teaching_mode', '')
-    days_per_week = data.get('days_per_week')
-    additional_notes = data.get('additional_notes', '')
-
-    # Validation errors map to report all field validation issues
-    errors = {}
-
-    # 1. Title validation
-    if not title or not str(title).strip():
-        errors['title'] = "Title is required."
-
-    # 2. Student class validation
-    if not student_class or not str(student_class).strip():
-        errors['student_class'] = "Student class is required."
-
-    # 3. Subjects validation
-    if not subjects or not str(subjects).strip():
-        errors['subjects'] = "Subjects are required."
-
-    # 4. Location validation
-    if not location or not str(location).strip():
-        errors['location'] = "Location is required."
-
-    # 5. Monthly salary validation
-    if monthly_salary is None:
-        errors['monthly_salary'] = "Monthly salary is required."
+    if student_class:
+        query = query.filter(TuitionPost.student_class.ilike(f"%{student_class.strip()}%"))
+    if location:
+        query = query.filter(TuitionPost.location.ilike(f"%{location.strip()}%"))
+    if status_filter:
+        query = query.filter(TuitionPost.status == status_filter.strip().lower())
     else:
-        try:
-            val = float(monthly_salary)
-            if val <= 0:
-                errors['monthly_salary'] = "Monthly salary must be a positive number."
-        except (ValueError, TypeError):
-            errors['monthly_salary'] = "Monthly salary must be a valid numeric value."
+        query = query.filter(TuitionPost.status == 'open')
 
-    # 6. Teaching mode validation
-    valid_modes = ['Online', 'Offline']
-    if not teaching_mode or teaching_mode not in valid_modes:
-        errors['teaching_mode'] = f"Teaching mode must be either 'Online' or 'Offline'."
+    posts = query.order_by(TuitionPost.created_at.desc()).all()
+    return {
+        "success": True,
+        "count": len(posts),
+        "posts": [post.to_dict() for post in posts]
+    }
 
-    # 7. Days per week validation
-    if days_per_week is None:
-        errors['days_per_week'] = "Days per week is required."
-    else:
-        try:
-            days_val = int(days_per_week)
-            if days_val < 1 or days_val > 7:
-                errors['days_per_week'] = "Days per week must be between 1 and 7."
-        except (ValueError, TypeError):
-            errors['days_per_week'] = "Days per week must be an integer between 1 and 7."
+@tuition_posts_router.get("/my-posts")
+def get_my_posts(
+    current_user: User = Depends(require_client),
+    db: Session = Depends(get_db)
+):
+    posts = db.query(TuitionPost).filter(
+        TuitionPost.user_id == current_user.id
+    ).order_by(TuitionPost.created_at.desc()).all()
 
-    # If any validation errors exist, return 400 Bad Request
-    if errors:
-        return jsonify({
-            "success": False,
-            "message": "Validation failed.",
-            "errors": errors
-        }), 400
+    return {
+        "success": True,
+        "count": len(posts),
+        "posts": [post.to_dict() for post in posts]
+    }
 
-    # Sanitize and prepare data
-    preferred_tutor_gender = str(preferred_tutor_gender).strip()
-    if preferred_tutor_gender not in ['Male', 'Female', 'Any']:
-        preferred_tutor_gender = 'Any'
+@tuition_posts_router.post("", status_code=status.HTTP_201_CREATED)
+@tuition_posts_router.post("/", status_code=status.HTTP_201_CREATED)
+def create_tuition_post(
+    data: TuitionPostCreate,
+    current_user: User = Depends(require_client),
+    db: Session = Depends(get_db)
+):
+    if not data.title.strip() or not data.student_class.strip() or not data.subjects.strip() or not data.location.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Title, student class, subjects, and location are required."
+        )
 
-    # Create new TuitionPost database record
+    if data.monthly_salary <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Monthly salary must be greater than zero."
+        )
+
+    if data.days_per_week <= 0 or data.days_per_week > 7:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Days per week must be between 1 and 7."
+        )
+
     new_post = TuitionPost(
         user_id=current_user.id,
-        title=str(title).strip(),
-        student_class=str(student_class).strip(),
-        subjects=str(subjects).strip(),
-        location=str(location).strip(),
-        monthly_salary=float(monthly_salary),
-        preferred_tutor_gender=preferred_tutor_gender,
-        teaching_mode=teaching_mode,
-        days_per_week=int(days_per_week),
-        additional_notes=str(additional_notes).strip() if additional_notes else "",
-        status="open"  # Default status is 'open'
+        title=data.title.strip(),
+        student_class=data.student_class.strip(),
+        subjects=data.subjects.strip(),
+        location=data.location.strip(),
+        monthly_salary=float(data.monthly_salary),
+        preferred_tutor_gender=(data.preferred_tutor_gender or "Any").strip(),
+        teaching_mode=(data.teaching_mode or "Offline").strip(),
+        days_per_week=int(data.days_per_week),
+        additional_notes=(data.additional_notes or "").strip(),
+        status="open"
     )
 
-    db.session.add(new_post)
-    db.session.commit()
+    db.add(new_post)
+    db.commit()
+    db.refresh(new_post)
 
-    return jsonify({
+    return {
         "success": True,
-        "message": "Tuition post created successfully.",
+        "message": "Tuition post created successfully",
         "post": new_post.to_dict()
-    }), 201
+    }
 
-
-@tuition_posts_bp.route('/api/tuition-posts/my-posts', methods=['GET', 'OPTIONS'])
-@token_required
-def get_my_tuition_posts():
-    """
-    GET /api/tuition-posts/my-posts
-    Retrieve all tuition posts created by the logged-in client.
-    """
-    if request.method == 'OPTIONS':
-        return jsonify({"success": True}), 200
-
-    current_user = g.current_user
-    posts = TuitionPost.query.filter_by(user_id=current_user.id).order_by(TuitionPost.created_at.desc()).all()
-
-    return jsonify({
+@tuition_posts_router.get("/{post_id}")
+def get_post_detail(post_id: int, db: Session = Depends(get_db)):
+    post = db.query(TuitionPost).filter(TuitionPost.id == post_id).first()
+    if not post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tuition post not found"
+        )
+    return {
         "success": True,
-        "count": len(posts),
-        "posts": [post.to_dict() for post in posts]
-    }), 200
+        "post": post.to_dict()
+    }
 
+@tuition_posts_router.delete("/{post_id}")
+def delete_tuition_post(
+    post_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    post = db.query(TuitionPost).filter(TuitionPost.id == post_id).first()
+    if not post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tuition post not found"
+        )
 
-@tuition_posts_bp.route('/api/tuition-posts', methods=['GET', 'OPTIONS'])
-def get_all_tuition_posts():
-    """
-    GET /api/tuition-posts
-    Public endpoint: Get all open tuition posts available.
-    """
-    if request.method == 'OPTIONS':
-        return jsonify({"success": True}), 200
+    if post.user_id != current_user.id and current_user.role.lower() != 'admin':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not authorized to delete this tuition post."
+        )
 
-    posts = TuitionPost.query.order_by(TuitionPost.created_at.desc()).all()
-    return jsonify({
+    db.delete(post)
+    db.commit()
+
+    return {
         "success": True,
-        "count": len(posts),
-        "posts": [post.to_dict() for post in posts]
-    }), 200
+        "message": f"Tuition post {post_id} deleted successfully."
+    }
+
+@tuition_posts_router.post("/{post_id}/apply")
+def apply_for_tuition_post(
+    post_id: int,
+    current_user: User = Depends(require_tutor),
+    db: Session = Depends(get_db)
+):
+    post = db.query(TuitionPost).filter(TuitionPost.id == post_id).first()
+    if not post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tuition post not found"
+        )
+
+    if post.status != 'open':
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This tuition post is closed for applications."
+        )
+
+    return {
+        "success": True,
+        "message": f"Successfully applied for tuition post '{post.title}'.",
+        "post_id": post_id,
+        "tutor": {
+            "id": current_user.id,
+            "name": current_user.name,
+            "email": current_user.email
+        }
+    }

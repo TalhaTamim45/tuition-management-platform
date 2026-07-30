@@ -1,22 +1,22 @@
-from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timezone
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy.orm import relationship
+from database import Base
 
-db = SQLAlchemy()
-
-class User(db.Model):
+class User(Base):
     __tablename__ = 'users'
 
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    phone = db.Column(db.String(20), nullable=True, default='')
-    password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20), nullable=False, default='client') # client, tutor, admin (strictly lowercase)
-    is_blocked = db.Column(db.Boolean, nullable=False, default=False)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    email = Column(String(120), unique=True, index=True, nullable=False)
+    phone = Column(String(20), nullable=True, default='')
+    password_hash = Column(String(255), nullable=False)
+    role = Column(String(20), nullable=False, default='client')  # client, tutor, admin
+    is_blocked = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationship with TuitionPost
-    tuition_posts = db.relationship('TuitionPost', backref='user', lazy=True, cascade="all, delete-orphan")
+    tuition_posts = relationship('TuitionPost', back_populates='user', cascade="all, delete-orphan")
 
     def to_dict(self):
         return {
@@ -29,26 +29,28 @@ class User(db.Model):
             "created_at": self.created_at.isoformat() if self.created_at else None
         }
 
-class TuitionPost(db.Model):
+class TuitionPost(Base):
     __tablename__ = 'tuition_posts'
 
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    title = db.Column(db.String(200), nullable=False)
-    student_class = db.Column(db.String(50), nullable=False)
-    subjects = db.Column(db.String(255), nullable=False)
-    location = db.Column(db.String(150), nullable=False)
-    monthly_salary = db.Column(db.Float, nullable=False)
-    preferred_tutor_gender = db.Column(db.String(20), default='Any')
-    teaching_mode = db.Column(db.String(20), nullable=False, default='Offline') # Online, Offline
-    days_per_week = db.Column(db.Integer, nullable=False)
-    additional_notes = db.Column(db.Text, nullable=True)
-    status = db.Column(db.String(20), nullable=False, default='open') # open, closed
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    title = Column(String(200), nullable=False)
+    student_class = Column(String(50), nullable=False)
+    subjects = Column(String(255), nullable=False)
+    location = Column(String(150), nullable=False)
+    monthly_salary = Column(Float, nullable=False)
+    preferred_tutor_gender = Column(String(20), default='Any')
+    teaching_mode = Column(String(20), nullable=False, default='Offline')  # Online, Offline
+    days_per_week = Column(Integer, nullable=False)
+    additional_notes = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, default='open')  # open, closed
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    # Relationship with User
+    user = relationship('User', back_populates='tuition_posts')
 
     def to_dict(self):
-        # Fetch creator user name safely
         creator_name = self.user.name if self.user else "Unknown Client"
         return {
             "id": self.id,
