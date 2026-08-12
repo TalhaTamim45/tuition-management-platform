@@ -36,6 +36,16 @@ function Navbar({ currentView, setCurrentView, currentUser, onLogout, openAuthMo
           </>
         )}
 
+        {/* Tutor Links */}
+        {userRole === 'tutor' && (
+          <button
+            className={`nav-btn ${currentView === 'my-applications' ? 'active' : ''}`}
+            onClick={() => setCurrentView('my-applications')}
+          >
+            📩 My Applications
+          </button>
+        )}
+
         {/* Public or Unauthenticated User can see Post Tuition button which opens auth guard */}
         {!currentUser && (
           <button
@@ -43,6 +53,16 @@ function Navbar({ currentView, setCurrentView, currentUser, onLogout, openAuthMo
             onClick={() => setCurrentView('post-tuition')}
           >
             ➕ Post Tuition
+          </button>
+        )}
+
+        {/* Profile Link for all logged in users */}
+        {currentUser && (
+          <button
+            className={`nav-btn ${currentView === 'profile' ? 'active' : ''}`}
+            onClick={() => setCurrentView('profile')}
+          >
+            👤 My Profile
           </button>
         )}
 

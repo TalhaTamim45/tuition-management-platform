@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database import get_db
 from models import User
-from schemas import UserRegister, UserLogin
+from schemas import UserRegister, UserLogin, UserProfileUpdate
 from auth import generate_token, generate_password_hash, check_password_hash, get_current_user
 
 auth_router = APIRouter(prefix="/api/auth", tags=["Auth"])
@@ -91,5 +91,36 @@ def login(data: UserLogin, db: Session = Depends(get_db)):
 def get_me(current_user: User = Depends(get_current_user)):
     return {
         "success": True,
+        "user": current_user.to_dict()
+    }
+
+@auth_router.put("/profile")
+def update_profile(
+    data: UserProfileUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Name is required."
+        )
+
+    current_user.name = name
+    current_user.phone = (data.phone or "").strip()
+    current_user.education = (data.education or "").strip()
+    current_user.institution = (data.institution or "").strip()
+    current_user.subjects = (data.subjects or "").strip()
+    current_user.experience = (data.experience or "").strip()
+    current_user.salary_expectation = float(data.salary_expectation or 0.0)
+    current_user.address = (data.address or "").strip()
+
+    db.commit()
+    db.refresh(current_user)
+
+    return {
+        "success": True,
+        "message": "Profile updated successfully.",
         "user": current_user.to_dict()
     }

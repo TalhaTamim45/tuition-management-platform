@@ -57,3 +57,16 @@ class BlockUpdate(BaseModel):
 
 class StatusUpdate(BaseModel):
     status: str
+
+class UserProfileUpdate(BaseModel):
+    name: str
+    phone: Optional[str] = ""
+    education: Optional[str] = ""
+    institution: Optional[str] = ""
+    subjects: Optional[str] = ""
+    experience: Optional[str] = ""
+    salary_expectation: Optional[float] = 0.0
+    address: Optional[str] = ""
+
+class ApplicationStatusUpdate(BaseModel):
+    status: str

@@ -2,7 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from database import get_db
-from models import User, TuitionPost
+from models import User, TuitionPost, Application
 from schemas import TuitionPostCreate
 from auth import get_current_user, require_client, require_tutor
 
@@ -157,13 +157,85 @@ def apply_for_tuition_post(
             detail="This tuition post is closed for applications."
         )
 
+    existing_app = db.query(Application).filter(
+        Application.tuition_post_id == post_id,
+        Application.tutor_id == current_user.id
+    ).first()
+    if existing_app:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You have already applied for this tuition post."
+        )
+
+    new_app = Application(
+        tuition_post_id=post_id,
+        tutor_id=current_user.id,
+        status='pending'
+    )
+    db.add(new_app)
+    db.commit()
+    db.refresh(new_app)
+
     return {
         "success": True,
         "message": f"Successfully applied for tuition post '{post.title}'.",
         "post_id": post_id,
-        "tutor": {
-            "id": current_user.id,
-            "name": current_user.name,
-            "email": current_user.email
-        }
+        "application": new_app.to_dict()
+    }
+
+@tuition_posts_router.put("/{post_id}")
+def update_tuition_post(
+    post_id: int,
+    data: TuitionPostCreate,
+    current_user: User = Depends(require_client),
+    db: Session = Depends(get_db)
+):
+    post = db.query(TuitionPost).filter(TuitionPost.id == post_id).first()
+    if not post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tuition post not found"
+        )
+
+    if post.user_id != current_user.id and current_user.role.lower() != 'admin':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not authorized to update this tuition post."
+        )
+
+    if not data.title.strip() or not data.student_class.strip() or not data.subjects.strip() or not data.location.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Title, student class, subjects, and location are required."
+        )
+
+    if data.monthly_salary <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Monthly salary must be greater than zero."
+        )
+
+    if data.days_per_week <= 0 or data.days_per_week > 7:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Days per week must be between 1 and 7."
+        )
+
+    post.title = data.title.strip()
+    post.student_class = data.student_class.strip()
+    post.subjects = data.subjects.strip()
+    post.location = data.location.strip()
+    post.monthly_salary = float(data.monthly_salary)
+    post.preferred_tutor_gender = (data.preferred_tutor_gender or "Any").strip()
+    post.teaching_mode = (data.teaching_mode or "Offline").strip()
+    post.days_per_week = int(data.days_per_week)
+    post.additional_notes = (data.additional_notes or "").strip()
+
+    db.commit()
+    db.refresh(post)
+
+    return {
+        "success": True,
+        "message": "Tuition post updated successfully",
+        "post": post.to_dict()
     }

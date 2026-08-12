@@ -3,11 +3,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base, SessionLocal
-from models import User, TuitionPost
+from models import User, TuitionPost, Application
 from auth import generate_password_hash
 from routes_auth import auth_router
 from routes_tuition_posts import tuition_posts_router
 from routes_admin import admin_router
+from routes_applications import applications_router
 
 def seed_admin_user(db):
     admin_email = os.getenv("ADMIN_EMAIL", "admin@example.com").strip().lower()
@@ -40,7 +41,8 @@ def seed_demo_data(db):
             phone="+8801712345678",
             password_hash=generate_password_hash("password123"),
             role="client",
-            is_blocked=False
+            is_blocked=False,
+            address="Dhanmondi, Dhaka"
         )
         tutor = User(
             name="Rahim Khan (Tutor)",
@@ -48,7 +50,13 @@ def seed_demo_data(db):
             phone="+8801812345678",
             password_hash=generate_password_hash("password123"),
             role="tutor",
-            is_blocked=False
+            is_blocked=False,
+            education="B.Sc in CSE",
+            institution="BUET",
+            subjects="Mathematics, Physics, ICT",
+            experience="2 Years",
+            salary_expectation=8000.0,
+            address="Mirpur, Dhaka"
         )
         db.add_all([client, tutor])
         db.commit()
@@ -67,6 +75,14 @@ def seed_demo_data(db):
             status="open"
         )
         db.add(sample_post)
+        db.commit()
+
+        sample_application = Application(
+            tuition_post_id=sample_post.id,
+            tutor_id=tutor.id,
+            status="pending"
+        )
+        db.add(sample_application)
         db.commit()
 
 @asynccontextmanager
@@ -101,6 +117,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(tuition_posts_router)
 app.include_router(admin_router)
+app.include_router(applications_router)
 
 @app.get("/")
 def read_root():

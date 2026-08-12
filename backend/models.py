@@ -15,6 +15,14 @@ class User(Base):
     is_blocked = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
+    # Profile details (specifically for Tutors, but accessible/generic)
+    education = Column(String(200), nullable=True, default='')
+    institution = Column(String(200), nullable=True, default='')
+    subjects = Column(String(255), nullable=True, default='')
+    experience = Column(String(100), nullable=True, default='')
+    salary_expectation = Column(Float, nullable=True, default=0.0)
+    address = Column(String(200), nullable=True, default='')
+
     # Relationship with TuitionPost
     tuition_posts = relationship('TuitionPost', back_populates='user', cascade="all, delete-orphan")
 
@@ -26,7 +34,13 @@ class User(Base):
             "phone": self.phone or '',
             "role": self.role.lower() if self.role else 'client',
             "is_blocked": bool(self.is_blocked),
-            "created_at": self.created_at.isoformat() if self.created_at else None
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "education": self.education or '',
+            "institution": self.institution or '',
+            "subjects": self.subjects or '',
+            "experience": self.experience or '',
+            "salary_expectation": float(self.salary_expectation or 0.0),
+            "address": self.address or ''
         }
 
 class TuitionPost(Base):
@@ -49,6 +63,9 @@ class TuitionPost(Base):
 
     # Relationship with User
     user = relationship('User', back_populates='tuition_posts')
+    
+    # Relationship with Application
+    applications = relationship('Application', back_populates='tuition_post', cascade="all, delete-orphan")
 
     def to_dict(self):
         creator_name = self.user.name if self.user else "Unknown Client"
@@ -68,4 +85,35 @@ class TuitionPost(Base):
             "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+
+class Application(Base):
+    __tablename__ = 'applications'
+
+    id = Column(Integer, primary_key=True, index=True)
+    tuition_post_id = Column(Integer, ForeignKey('tuition_posts.id', ondelete='CASCADE'), nullable=False)
+    tutor_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    status = Column(String(20), nullable=False, default='pending')  # pending, accepted, rejected
+    applied_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    tuition_post = relationship('TuitionPost', back_populates='applications')
+    tutor = relationship('User')
+
+    def to_dict(self):
+        tutor_info = self.tutor.to_dict() if self.tutor else {}
+        return {
+            "id": self.id,
+            "tuition_post_id": self.tuition_post_id,
+            "tutor_id": self.tutor_id,
+            "status": self.status,
+            "applied_at": self.applied_at.isoformat() if self.applied_at else None,
+            "tutor_name": tutor_info.get("name", "Unknown Tutor"),
+            "tutor_email": tutor_info.get("email", ""),
+            "tutor_phone": tutor_info.get("phone", ""),
+            "tutor_education": tutor_info.get("education", ""),
+            "tutor_institution": tutor_info.get("institution", ""),
+            "tutor_subjects": tutor_info.get("subjects", ""),
+            "tutor_experience": tutor_info.get("experience", ""),
+            "tutor_salary_expectation": tutor_info.get("salary_expectation", 0.0)
         }

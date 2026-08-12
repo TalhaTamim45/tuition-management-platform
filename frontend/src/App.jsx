@@ -6,6 +6,8 @@ import AdminDashboard from './components/AdminDashboard'
 import AdminUsers from './components/AdminUsers'
 import AdminTuitionPosts from './components/AdminTuitionPosts'
 import AuthModal from './components/AuthModal'
+import UserProfile from './components/UserProfile'
+import MyApplications from './components/MyApplications'
 
 const API_URL = 'http://localhost:5000'
 
@@ -16,6 +18,8 @@ function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [allPosts, setAllPosts] = useState([])
   const [loadingPosts, setLoadingPosts] = useState(false)
+  const [editPostId, setEditPostId] = useState(null)
+  const [appliedPostIds, setAppliedPostIds] = useState(new Set())
 
   // Load auth state from localStorage on initial render
   useEffect(() => {
@@ -33,6 +37,30 @@ function App() {
     fetchAllPosts()
   }, [])
 
+  // Sync tutor application statuses
+  const fetchTutorApplications = async () => {
+    if (currentUser?.role?.toLowerCase() !== 'tutor' || !token) {
+      setAppliedPostIds(new Set())
+      return
+    }
+    try {
+      const res = await fetch(`${API_URL}/api/applications/my-applications`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        const ids = new Set((data.applications || []).map(app => app.tuition_post_id))
+        setAppliedPostIds(ids)
+      }
+    } catch (e) {
+      console.error('Failed to fetch tutor applications:', e)
+    }
+  }
+
+  useEffect(() => {
+    fetchTutorApplications()
+  }, [currentUser, token])
+
   const fetchAllPosts = async () => {
     setLoadingPosts(true)
     try {
@@ -45,6 +73,36 @@ function App() {
       console.error('Failed to fetch public tuition posts:', e)
     } finally {
       setLoadingPosts(false)
+    }
+  }
+
+  const handleApply = async (postId) => {
+    if (!currentUser) {
+      setIsAuthModalOpen(true)
+      return
+    }
+    if (currentUser.role?.toLowerCase() !== 'tutor') {
+      alert('Only Tutors can apply for tuition jobs.')
+      return
+    }
+    try {
+      const res = await fetch(`${API_URL}/api/tuition-posts/${postId}/apply`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        alert('🎉 Application submitted successfully!')
+        setAppliedPostIds(prev => {
+          const newSet = new Set(prev)
+          newSet.add(postId)
+          return newSet
+        })
+      } else {
+        alert(data.detail || data.error || 'Failed to submit application.')
+      }
+    } catch (err) {
+      alert('Network error submitting application.')
     }
   }
 
@@ -65,6 +123,7 @@ function App() {
     setToken('')
     localStorage.removeItem('user')
     localStorage.removeItem('token')
+    setAppliedPostIds(new Set())
     setCurrentView('home')
   }
 
@@ -89,6 +148,7 @@ function App() {
                   className="btn btn-primary btn-lg"
                   onClick={() => {
                     if (currentUser?.role?.toLowerCase() === 'client' || !currentUser) {
+                      setEditPostId(null)
                       setCurrentView('post-tuition')
                     } else if (currentUser?.role?.toLowerCase() === 'admin') {
                       setCurrentView('admin-dashboard')
@@ -105,6 +165,13 @@ function App() {
                     onClick={() => setCurrentView('admin-dashboard')}
                   >
                     📊 Open Admin Dashboard
+                  </button>
+                ) : currentUser?.role?.toLowerCase() === 'tutor' ? (
+                  <button
+                    className="btn btn-secondary btn-lg"
+                    onClick={() => setCurrentView('my-applications')}
+                  >
+                    📋 View My Applications
                   </button>
                 ) : (
                   <button
@@ -166,6 +233,27 @@ function App() {
                         <p>💰 <strong>Salary:</strong> ৳{Number(post.monthly_salary).toLocaleString()} BDT/month ({post.days_per_week} days/wk)</p>
                       </div>
                       {post.additional_notes && <p className="post-notes-preview">"{post.additional_notes}"</p>}
+
+                      {/* Matching and Apply Workflow */}
+                      <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '0.75rem' }} className="flex-between">
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                          👤 Posted by: <strong>{post.client_name}</strong>
+                        </span>
+                        {currentUser?.role?.toLowerCase() === 'client' ? (
+                          null
+                        ) : currentUser?.role?.toLowerCase() === 'admin' ? (
+                          null
+                        ) : appliedPostIds.has(post.id) ? (
+                          <span className="status-badge status-active" style={{ background: '#e0f2fe', color: '#0369a1', borderColor: '#bae6fd' }}>📩 APPLIED</span>
+                        ) : (
+                          <button 
+                            className="btn btn-primary btn-sm"
+                            onClick={() => handleApply(post.id)}
+                          >
+                            🚀 Apply for Job
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -181,11 +269,41 @@ function App() {
             API_URL={API_URL}
             setCurrentView={setCurrentView}
             openAuthModal={() => setIsAuthModalOpen(true)}
+            editPostId={editPostId}
+            clearEditPostId={() => setEditPostId(null)}
           />
         )}
 
         {currentView === 'my-posts' && (
           <MyTuitionPosts
+            currentUser={currentUser}
+            token={token}
+            API_URL={API_URL}
+            setCurrentView={setCurrentView}
+            openAuthModal={() => setIsAuthModalOpen(true)}
+            handleEditPost={(postId) => {
+              setEditPostId(postId)
+              setCurrentView('post-tuition')
+            }}
+            clearEditPostId={() => setEditPostId(null)}
+          />
+        )}
+
+        {currentView === 'profile' && (
+          <UserProfile
+            currentUser={currentUser}
+            token={token}
+            API_URL={API_URL}
+            onProfileUpdate={(updatedUser) => {
+              setCurrentUser(updatedUser)
+              localStorage.setItem('user', JSON.stringify(updatedUser))
+            }}
+            openAuthModal={() => setIsAuthModalOpen(true)}
+          />
+        )}
+
+        {currentView === 'my-applications' && (
+          <MyApplications
             currentUser={currentUser}
             token={token}
             API_URL={API_URL}

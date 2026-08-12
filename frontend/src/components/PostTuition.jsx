@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 
-function PostTuition({ currentUser, token, API_URL, setCurrentView, openAuthModal }) {
+function PostTuition({ currentUser, token, API_URL, setCurrentView, openAuthModal, editPostId, clearEditPostId }) {
   const [formData, setFormData] = useState({
     title: '',
     student_class: '',
@@ -20,7 +20,42 @@ function PostTuition({ currentUser, token, API_URL, setCurrentView, openAuthModa
 
   const userRole = currentUser?.role?.toLowerCase() || ''
 
-  // 1. Guard check: Only logged-in Clients can post
+  // Fetch post detail if in edit mode
+  useEffect(() => {
+    if (editPostId) {
+      const fetchPostDetail = async () => {
+        setLoading(true)
+        setServerError('')
+        try {
+          const response = await fetch(`${API_URL}/api/tuition-posts/${editPostId}`)
+          const data = await response.json()
+          if (response.ok && data.success && data.post) {
+            const p = data.post
+            setFormData({
+              title: p.title || '',
+              student_class: p.student_class || '',
+              subjects: p.subjects || '',
+              location: p.location || '',
+              monthly_salary: p.monthly_salary !== undefined ? String(p.monthly_salary) : '',
+              preferred_tutor_gender: p.preferred_tutor_gender || 'Any',
+              teaching_mode: p.teaching_mode || 'Offline',
+              days_per_week: p.days_per_week !== undefined ? String(p.days_per_week) : '4',
+              additional_notes: p.additional_notes || ''
+            })
+          } else {
+            setServerError(data.error || 'Failed to fetch tuition post details.')
+          }
+        } catch (err) {
+          setServerError('Network error fetching tuition post details.')
+        } finally {
+          setLoading(false)
+        }
+      }
+      fetchPostDetail()
+    }
+  }, [editPostId, API_URL])
+
+  // Guard check: Only logged-in Clients can post
   if (!currentUser) {
     return (
       <div className="card text-center p-5 auth-guard-card">
@@ -131,9 +166,12 @@ function PostTuition({ currentUser, token, API_URL, setCurrentView, openAuthModa
       additional_notes: formData.additional_notes.trim()
     }
 
+    const method = editPostId ? 'PUT' : 'POST'
+    const endpoint = editPostId ? `/api/tuition-posts/${editPostId}` : '/api/tuition-posts'
+
     try {
-      const response = await fetch(`${API_URL}/api/tuition-posts`, {
-        method: 'POST',
+      const response = await fetch(`${API_URL}${endpoint}`, {
+        method: method,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
@@ -144,7 +182,7 @@ function PostTuition({ currentUser, token, API_URL, setCurrentView, openAuthModa
       const data = await response.json()
 
       if (response.ok && data.success) {
-        setSuccessMessage('🎉 Tuition post created successfully! Redirecting to My Tuition Posts...')
+        setSuccessMessage(`🎉 Tuition post ${editPostId ? 'updated' : 'created'} successfully! Redirecting to My Tuition Posts...`)
         setFormData({
           title: '',
           student_class: '',
@@ -156,6 +194,10 @@ function PostTuition({ currentUser, token, API_URL, setCurrentView, openAuthModa
           days_per_week: '4',
           additional_notes: ''
         })
+
+        if (typeof clearEditPostId === 'function') {
+          clearEditPostId()
+        }
 
         setTimeout(() => {
           setCurrentView('my-posts')
@@ -176,8 +218,8 @@ function PostTuition({ currentUser, token, API_URL, setCurrentView, openAuthModa
   return (
     <div className="post-tuition-container card">
       <div className="form-header">
-        <h2>📌 Post Your Tuition Requirement</h2>
-        <p className="subtitle">Fill out the form below to connect directly with qualified home and online tutors.</p>
+        <h2>{editPostId ? '✏️ Edit Your Tuition Requirement' : '📌 Post Your Tuition Requirement'}</h2>
+        <p className="subtitle">{editPostId ? 'Make changes to your posting details below.' : 'Fill out the form below to connect directly with qualified home and online tutors.'}</p>
       </div>
 
       {successMessage && (
@@ -337,7 +379,7 @@ function PostTuition({ currentUser, token, API_URL, setCurrentView, openAuthModa
         </div>
 
         {/* Submit Button & Loading State */}
-        <div className="form-actions">
+        <div className="form-actions" style={{ display: 'flex', gap: '1rem' }}>
           <button
             type="submit"
             className="btn btn-primary btn-lg btn-submit"
@@ -345,12 +387,26 @@ function PostTuition({ currentUser, token, API_URL, setCurrentView, openAuthModa
           >
             {loading ? (
               <>
-                <span className="spinner"></span> Submitting Job Post...
+                <span className="spinner"></span> {editPostId ? 'Updating...' : 'Submitting...'}
               </>
             ) : (
-              '🚀 Publish Tuition Job'
+              editPostId ? '💾 Save Changes' : '🚀 Publish Tuition Job'
             )}
           </button>
+          
+          {editPostId && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-lg"
+              onClick={() => {
+                if (typeof clearEditPostId === 'function') clearEditPostId()
+                setCurrentView('my-posts')
+              }}
+              disabled={loading}
+            >
+              Cancel
+            </button>
+          )}
         </div>
       </form>
     </div>
