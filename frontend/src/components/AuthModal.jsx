@@ -51,11 +51,13 @@ function AuthModal({ isOpen, onClose, onLoginSuccess, API_URL }) {
     setLoading(true)
     setError('')
 
+    const password = demoRole === 'admin' ? 'admin123' : 'password123';
+
     try {
       let res = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: demoEmail, password: 'password123' })
+        body: JSON.stringify({ email: demoEmail, password: password })
       })
       let data = await res.json()
 
@@ -67,7 +69,7 @@ function AuthModal({ isOpen, onClose, onLoginSuccess, API_URL }) {
           body: JSON.stringify({
             name: `Demo ${demoRole.toUpperCase()}`,
             email: demoEmail,
-            password: 'password123',
+            password: password,
             role: demoRole
           })
         })

@@ -7,6 +7,28 @@ from auth import require_admin
 
 admin_router = APIRouter(prefix="/api/admin", tags=["Admin Moderation"])
 
+@admin_router.get("/dashboard")
+def admin_dashboard(
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    total_users = db.query(User).count()
+    total_clients = db.query(User).filter(User.role == 'client').count()
+    total_tutors = db.query(User).filter(User.role == 'tutor').count()
+    total_tuition_posts = db.query(TuitionPost).count()
+    open_tuition_posts = db.query(TuitionPost).filter(TuitionPost.status == 'open').count()
+    closed_tuition_posts = db.query(TuitionPost).filter(TuitionPost.status == 'closed').count()
+
+    return {
+        "success": True,
+        "total_users": total_users,
+        "total_clients": total_clients,
+        "total_tutors": total_tutors,
+        "total_tuition_posts": total_tuition_posts,
+        "open_tuition_posts": open_tuition_posts,
+        "closed_tuition_posts": closed_tuition_posts
+    }
+
 @admin_router.get("/users")
 def list_all_users(
     current_admin: User = Depends(require_admin),
